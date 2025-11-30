@@ -1,12 +1,21 @@
+use aes_gcm::{
+    AeadCore, Aes256Gcm, Key, Nonce,
+    aead::{Aead, KeyInit, OsRng},
+};
+use base64::{Engine as _, engine::general_purpose};
 use rsa::{
-    Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey, rand_core::OsRng,
+    Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey,
     pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey},
 };
-use base64::{engine::general_purpose, Engine as _};
 use std::error::Error;
 
+const RSA_BLOCK_SIZE: usize = 256;
+const NONCE_SIZE: usize = 12;
+
 fn decode_b64(input: &str) -> Result<Vec<u8>, Box<dyn Error>> {
-    general_purpose::STANDARD.decode(input).map_err(|e| e.into())
+    general_purpose::STANDARD
+        .decode(input)
+        .map_err(|e| e.into())
 }
 
 fn encode_b64(input: &[u8]) -> String {
@@ -26,27 +35,46 @@ pub fn rsa_gen_keypair() -> Result<(String, String), Box<dyn Error>> {
     Ok((private_pem.to_string(), public_pem.to_string()))
 }
 
-pub fn rsa_encrypt(plaintext: &str, pub_key: &str) -> Result<String, Box<dyn Error>> {
+pub fn hyb_encrypt(plaintext: &str, pub_key: &str) -> Result<String, Box<dyn Error>> {
+    let aes_key = Aes256Gcm::generate_key(&mut OsRng);
+    let cipher = Aes256Gcm::new(&aes_key);
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+
+    let aes_ciphertext = cipher
+        .encrypt(&nonce, plaintext.as_bytes().as_ref())
+        .map_err(|e| format!("AES encryption failed: {}", e))?;
+
     let public_key = RsaPublicKey::from_public_key_pem(pub_key)?;
-    let mut rng = OsRng;
+    let enc_aes_key = public_key.encrypt(&mut OsRng, Pkcs1v15Encrypt, aes_key.as_slice())?;
 
-    let encrypted_data = public_key.encrypt(
-        &mut rng,
-        Pkcs1v15Encrypt,
-        plaintext.as_bytes(),
-    )?;
+    let mut combined_ciphertext = Vec::new();
+    combined_ciphertext.extend_from_slice(&enc_aes_key);
+    combined_ciphertext.extend_from_slice(&nonce);
+    combined_ciphertext.extend_from_slice(&aes_ciphertext);
 
-    Ok(encode_b64(&encrypted_data))
+    Ok(encode_b64(&combined_ciphertext))
 }
 
-pub fn rsa_decrypt(ciphertext_b64: &str, priv_key: &str) -> Result<String, Box<dyn Error>> {
+pub fn hyb_decrypt(ciphertext_b64: &str, priv_key: &str) -> Result<String, Box<dyn Error>> {
     let private_key = RsaPrivateKey::from_pkcs8_pem(priv_key)?;
     let ciphertext = decode_b64(ciphertext_b64)?;
 
-    let decrypted_data = private_key.decrypt(
-        Pkcs1v15Encrypt,
-        &ciphertext,
-    )?;
+    if ciphertext.len() < RSA_BLOCK_SIZE + NONCE_SIZE {
+        return Err("Invalid ciphertext length".into());
+    }
 
-    Ok(String::from_utf8(decrypted_data)?)
+    let (enc_aes_key, ciphertext) = ciphertext.split_at(RSA_BLOCK_SIZE);
+    let (nonce_bytes, aes_ciphertext) = ciphertext.split_at(NONCE_SIZE);
+
+    let aes_key_bytes = private_key.decrypt(Pkcs1v15Encrypt, enc_aes_key)?;
+
+    let key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
+    let cipher = Aes256Gcm::new(key);
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    let plaintext_bytes = cipher
+        .decrypt(nonce, aes_ciphertext)
+        .map_err(|e| format!("AES decryption failed: {}", e))?;
+
+    Ok(String::from_utf8(plaintext_bytes)?)
 }

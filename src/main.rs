@@ -25,9 +25,30 @@ fn cli() -> Command {
                 ),
         )
         .subcommand(
+            Command::new("load")
+                .about("loads a directory of entries into the journal")
+                .arg(
+                    Arg::new("directory")
+                        .help("Path of the directory to load")
+                        .required(true)
+                        .value_name("DIRECTORY"),
+                ),
+        )
+        .subcommand(
             Command::new("read")
                 .about("read an entry in the directory")
-                .arg(Arg::new("file").help("name of the entry file")),
+                .arg(
+                    Arg::new("file")
+                        .required(true)
+                        .help("name of the entry file")
+                        .value_name("FILE"),
+                )
+                .arg(
+                    Arg::new("pem")
+                        .required(true)
+                        .help("the private key of the file")
+                        .value_name("PEMF"),
+                ),
         )
         .subcommand(
             Command::new("lock")
@@ -42,6 +63,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     match matches.subcommand() {
         Some(("init", _sub_matches)) => {
             joman::initialize()?;
+
+            println!("journal directory initialized! key saved as ./private.pem");
         }
         Some(("add", sub_matches)) => {
             let file_path = sub_matches
@@ -50,12 +73,27 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             joman::add_file(file_path)?;
         }
+        Some(("load", sub_matches)) => {
+            let dir_path = sub_matches
+                .get_one::<String>("directory")
+                .expect("<DIRECTORY> argument missing");
+
+            joman::add_directory(dir_path)?;
+        }
         Some(("read", sub_matches)) => {
             let file_path = sub_matches
                 .get_one::<String>("file")
                 .expect("<FILE> argument missing");
 
-            let content = joman::read_file(file_path, None)?;
+            let key = match sub_matches.get_one::<String>("pem").map(|s| s.as_str()) {
+                Some(k) => k,
+                None => {
+                    eprintln!("private.pem is required to read an entry.");
+                    return Ok(());
+                }
+            };
+
+            let content = joman::read_file(file_path, key)?;
             println!("{}", content);
         }
         Some(("lock", sub_matches)) => {
