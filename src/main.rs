@@ -1,7 +1,5 @@
 use clap::{Arg, ArgMatches, Command, Parser};
 
-use crate::{encryption::aes_gen_key};
-
 mod encryption;
 mod joman;
 
@@ -13,7 +11,12 @@ fn cli() -> Command {
         .arg_required_else_help(true)
         .subcommand(
             Command::new("init")
-                .about("initializes an encrypted journal inside the current directory"),
+                .about("initializes an encrypted journal inside the current directory")
+                .arg(
+                    Arg::new("password")
+                        .help("password for the journal")
+                        .value_name("PASSWORD"),
+                ),
         )
         .subcommand(
             Command::new("add")
@@ -41,7 +44,6 @@ fn cli() -> Command {
                 .arg(Arg::new("key").help("AES-256 key").value_name("KEY"))
                 .about("encrypts a directory of entries and returns the key"),
         )
-        .subcommand(Command::new("generate").about("generates a AES-256 key"))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,14 +58,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .get_one::<String>("file")
                 .expect("file argument missing");
 
-            joman::add_file(file_path, None);
+            joman::add_file(file_path);
         }
-        Some(("read", sub_matches)) => {}
-        Some(("lock", sub_matches)) => {}
-        Some(("generate", sub_matches)) => {
-            let key = aes_gen_key();
+        Some(("read", sub_matches)) => {
 
-            println!("generated key: {}", key)
+        }
+        Some(("lock", sub_matches)) => {
+
         }
         _ => unreachable!(),
     }

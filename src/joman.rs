@@ -1,44 +1,33 @@
-use core::panic;
 use std::fs;
+use std::path::Path;
 
-use crate::encryption::{aes_decrypt, aes_encrypt, aes_gen_key};
+use crate::encryption::{rsa_gen_keypair, rsa_encrypt, rsa_decrypt};
 
-const CONFIG: &str = "[settings]\n key = ";
+pub fn initialize(name: &str) {
+    if Path::new(name).exists() {
+        println!("Journal already initialized in this directory.");
+        return;
+    }
 
-pub fn initialize() {
-    fs::create_dir_all(".joman").expect("Failed to create journal directory");
-    fs::write(".joman/config.toml", CONFIG).expect("failed to write config.toml");
+    fs::create_dir_all(name).expect("Failed to create journal directory");
+
+    let (priv_key, pub_key) = rsa_gen_keypair().expect("Failed to generate RSA keypair");
+
+    let pub_key_path = format!("{}/public.pem", name);
+    fs::write(pub_key_path, &pub_key).expect("Failed to save public key");
+
+    println!("directory initialized!\n {}", &priv_key)
+
 }
 
-fn file_to_string(file_path: &str) -> String {
-    fs::read_to_string(file_path).expect("Failed to read file")
-}
+pub fn add_file(file_path: &str) {
+    let plaintext = fs::read_to_string(file_path).expect("Failed to read file");
 
-fn encrypt_string(plaintext: &str, key: &str) -> String {
-    aes_encrypt(plaintext, key).expect("Encryption failed")
-}
+    let pub_key = fs::read_to_string(file_path).expect("Failed to read file");
 
-fn write_to_file(file_path: &str, data: &str) {
-    fs::write(file_path, data).expect("Failed to write to file");
-}
+    let ciphertext = rsa_encrypt(&plaintext, &pub_key).expect("failed to encrypt");
 
-pub fn add_file(file_path: &str, key: Option<&str>) {
-    let plaintext_str = file_to_string(file_path);
-
-    let encrypted_str = match key {
-        Some(k) => encrypt_string(&plaintext_str, k),
-        None => panic!("No key provided for encryption"),
-    };
-
-    write_to_file(file_path, &encrypted_str);
-}
-
-fn file_to_bytes(file_path: &str) -> Vec<u8> {
-    fs::read(file_path).expect("Failed to read file")
-}
-
-fn bytes_to_str(data: &[u8]) -> &str {
-    std::str::from_utf8(data).expect("Failed to convert bytes to string")
+    fs::write(file_path, &ciphertext).expect("Failed to write to file");
 }
 
 pub fn read_file(file_path: &str, key: Option<&str>) -> String {
@@ -47,7 +36,7 @@ pub fn read_file(file_path: &str, key: Option<&str>) -> String {
     let encrypted_str = std::str::from_utf8(&data).expect("Failed to convert entry data to string");
 
     let plaintext_str = match key {
-        Some(k) => aes_decrypt(encrypted_str, k).expect("Decryption failed"),
+        Some(k) => rsa_decrypt(encrypted_str, k).expect("Decryption failed"),
         None => encrypted_str.to_string(),
     };
 
@@ -55,23 +44,7 @@ pub fn read_file(file_path: &str, key: Option<&str>) -> String {
 }
 
 pub fn lock_directory(key: Option<&str>) {
-    let aes_key = match key {
-        Some(k) => k.to_string(),
-        None => aes_gen_key(),
-    };
+    let dir_entries = fs::read_dir("./.joman").expect("Failed to read current directory");
 
-    let entries = fs::read_dir(".joman").expect("Failed to read journal directory");
 
-    for entry in entries {
-        let entry = entry.expect("Failed to read directory entry");
-        let path = entry.path();
-        if path.is_file() {
-            let data = fs::read_to_string(&path).expect("Failed to read entry file");
-            let encrypted_data =
-                aes_encrypt(&data, &aes_key).expect("Failed to encrypt entry data");
-            fs::write(&path, encrypted_data).expect("Failed to write encrypted data to file");
-        }
-    }
-
-    println!("Directory locked. AES-256 Key: {}", aes_key);
 }

@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-aes-gcm = "0.10.3"
+rsa = "0.9.7"
 base64 = "0.22.1"
 clap = { version = "4.5.53", features = ["derive"] }
