@@ -1,4 +1,5 @@
-use clap::{Arg, ArgMatches, Command, Parser};
+use clap::{Arg, Command};
+use std::error::Error;
 
 mod encryption;
 mod joman;
@@ -11,12 +12,7 @@ fn cli() -> Command {
         .arg_required_else_help(true)
         .subcommand(
             Command::new("init")
-                .about("initializes an encrypted journal inside the current directory")
-                .arg(
-                    Arg::new("password")
-                        .help("password for the journal")
-                        .value_name("PASSWORD"),
-                ),
+                .about("initializes an encrypted journal inside the current directory"),
         )
         .subcommand(
             Command::new("add")
@@ -35,36 +31,39 @@ fn cli() -> Command {
         )
         .subcommand(
             Command::new("lock")
-                .arg(
-                    Arg::new("directory")
-                        .help("directory to encrypt")
-                        .required(true)
-                        .value_name("DIR"),
-                )
                 .arg(Arg::new("key").help("AES-256 key").value_name("KEY"))
                 .about("encrypts a directory of entries and returns the key"),
         )
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let matches = cli().get_matches();
 
     match matches.subcommand() {
-        Some(("init", sub_matches)) => {
-            joman::initialize();
+        Some(("init", _sub_matches)) => {
+            joman::initialize()?;
         }
         Some(("add", sub_matches)) => {
             let file_path = sub_matches
                 .get_one::<String>("file")
-                .expect("file argument missing");
+                .expect("<FILE> argument missing");
 
-            joman::add_file(file_path);
+            joman::add_file(file_path)?;
         }
         Some(("read", sub_matches)) => {
+            let file_path = sub_matches
+                .get_one::<String>("file")
+                .expect("<FILE> argument missing");
 
+            let content = joman::read_file(file_path, None)?;
+            println!("{}", content);
         }
         Some(("lock", sub_matches)) => {
+            let key = sub_matches.get_one::<String>("key").map(|s| s.as_str());
 
+            joman::lock_directory(key)?;
+
+            println!("Directory locked successfully.");
         }
         _ => unreachable!(),
     }
