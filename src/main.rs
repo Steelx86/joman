@@ -50,11 +50,6 @@ fn cli() -> Command {
                         .value_name("PEMF"),
                 ),
         )
-        .subcommand(
-            Command::new("lock")
-                .arg(Arg::new("key").help("AES-256 key").value_name("KEY"))
-                .about("encrypts a directory of entries and returns the key"),
-        )
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -64,7 +59,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         Some(("init", _sub_matches)) => {
             joman::initialize()?;
 
-            println!("journal directory initialized! key saved as ./private.pem");
+            println!("Journal directory initialized! key saved as ./private.pem");
         }
         Some(("add", sub_matches)) => {
             let file_path = sub_matches
@@ -95,13 +90,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let content = joman::read_file(file_path, key)?;
             println!("{}", content);
-        }
-        Some(("lock", sub_matches)) => {
-            let key = sub_matches.get_one::<String>("key").map(|s| s.as_str());
-
-            joman::lock_directory(key)?;
-
-            println!("Directory locked successfully.");
         }
         _ => unreachable!(),
     }

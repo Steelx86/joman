@@ -5,16 +5,16 @@ use std::error::Error;
 use crate::encryption::{hyb_decrypt, hyb_encrypt, rsa_gen_keypair};
 
 pub fn initialize() -> Result<(), Box<dyn Error>> {
-    if Path::new("journal").exists() {
-        println!("journal already initialized in this directory.");
+    if Path::new("Journal").exists() {
+        println!("Journal already initialized in this directory.");
         return Err("Journal already initialized".into());
     }
 
-    fs::create_dir_all("journal").expect("Failed to create journal directory");
+    fs::create_dir_all("Journal").expect("Failed to create journal directory");
 
     let (priv_key, pub_key) = rsa_gen_keypair().expect("Failed to generate RSA keypair");
 
-    let pub_key_path = format!("journal/public.pem");
+    let pub_key_path = format!("Journal/public.pem");
     let priv_key_path = format!("./private.pem");
     fs::write(pub_key_path, &pub_key).expect("Failed to save public key");
     fs::write(priv_key_path, &priv_key).expect("Failed to save private key");
@@ -25,12 +25,12 @@ pub fn initialize() -> Result<(), Box<dyn Error>> {
 pub fn add_file(file_path: &str) -> Result<(), Box<dyn Error>> {
     let plaintext = fs::read_to_string(file_path).expect("Failed to read file");
 
-    let pub_key = fs::read_to_string("journal/public.pem").expect("Failed to read file");
+    let pub_key = fs::read_to_string("Journal/public.pem").expect("Failed to read file");
 
     let ciphertext = hyb_encrypt(&plaintext, &pub_key).expect("failed to encrypt");
 
     let encrypted_file = format!(
-        "journal/{}.enc",
+        "Journal/{}.enc",
         Path::new(file_path).file_name().unwrap().to_str().unwrap()
     );
 
@@ -42,7 +42,7 @@ pub fn add_file(file_path: &str) -> Result<(), Box<dyn Error>> {
 pub fn add_directory(dir_path: &str) -> Result<(), Box<dyn Error>> {
     let entries = fs::read_dir(dir_path).expect("Failed to read directory");
 
-    let pub_key = fs::read_to_string("journal/public.pem").expect("Failed to read public key");
+    let pub_key = fs::read_to_string("Journal/public.pem").expect("Failed to read public key");
 
     for entry in entries {
         let entry = entry.expect("Failed to get directory entry");
@@ -55,7 +55,7 @@ pub fn add_directory(dir_path: &str) -> Result<(), Box<dyn Error>> {
             let ciphertext = hyb_encrypt(&plaintext, &pub_key).expect("Failed to encrypt file");
 
             let dest_path = format!(
-                "journal/{}.enc",
+                "Journal/{}.enc",
                 path.file_name().unwrap().to_str().unwrap()
             );
 
@@ -78,25 +78,3 @@ pub fn read_file(file_path: &str, key_path: &str) -> Result<String, Box<dyn Erro
     Ok(plaintext_str)
 }
 
-pub fn lock_directory(key: Option<&str>) -> Result<(), Box<dyn Error>> {
-    let dir_path = "journal";
-    let entries = fs::read_dir(dir_path).expect("Failed to read journal directory");
-
-    for entry in entries {
-        let entry = entry.expect("Failed to get directory entry");
-        let path = entry.path();
-
-        if path.is_file() {
-            let data = fs::read_to_string(&path).expect("Failed to read file");
-
-            let encrypted_data = match key {
-                Some(k) => hyb_encrypt(&data, k).expect("Encryption failed"),
-                None => data,
-            };
-
-            fs::write(&path, &encrypted_data).expect("Failed to write encrypted data");
-        }
-    }
-
-    Ok(())
-}
