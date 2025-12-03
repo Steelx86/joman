@@ -71,8 +71,8 @@ pub fn add_directory(dir_path: &str) -> Result<(), Box<dyn Error>> {
             let plaintext =
                 fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
 
-            let ciphertext =
-                hyb_encrypt(&plaintext, &pub_key).map_err(|e| format!("Failed to encrypt file"))?;
+            let ciphertext = hyb_encrypt(&plaintext, &pub_key)
+                .map_err(|e| format!("Failed to encrypt file: {}", e))?;
 
             let dest_path = format!(
                 "Journal/{}.enc",
